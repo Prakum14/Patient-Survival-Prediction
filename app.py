@@ -1,55 +1,111 @@
-import gradio as gr
 import joblib
+import prometheus_client as prom
 import numpy as np
-
-# Load your trained model
-xgb_clf = joblib.load("xgboost-model.pkl")
+import pandas as pd
+import joblib
+import gradio
+# import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, f1_score 
+from fastapi import FastAPI, Request, Response
 
 # Function for prediction
+
 def predict_death_event(age, anaemia, high_blood_pressure, creatinine_phosphokinase, diabetes, ejection_fraction, platelets, sex, serum_creatinine, serum_sodium, smoking, time):
-    # Create a NumPy array with the input features
-    input_data = np.array([age, anaemia, high_blood_pressure, creatinine_phosphokinase, diabetes, ejection_fraction, platelets, sex, serum_creatinine, serum_sodium, smoking, time])
 
-    # Reshape the array to a 2D array with a single row
-    input_data = input_data.reshape(1, -1)
+  sample = {
+        "age": int(age),
+        "anaemia": int(anaemia),
+        "high_blood_pressure": int(high_blood_pressure),
+        "creatinine_phosphokinase": int(creatinine_phosphokinase),
+        "diabetes": int(diabetes),
+        "ejection_fraction": int(ejection_fraction),
+        "platelets": float(platelets),
+        "sex": int(sex),
+        "serum_creatinine": float(serum_creatinine),
+        "serum_sodium": int(serum_sodium),
+        "smoking": int(smoking),
+        "time": int(time)
+    }
 
-    # Make the prediction
-    prediction = xgb_clf.predict(input_data)[0]
+  print(sample)
+  sample_df=pd.DataFrame(sample,index=[0])
+  #sample_df[numerical_cols]=scaler.transform(sample_df[numerical_cols])
 
-    # Return the prediction
-    return "Patient will survive" if prediction == 0 else "Patient will not survive"
+  xgb_clf = joblib.load('xgboost-model.pkl')
+
+  out = xgb_clf.predict(sample_df)
+  print(out)
+
+  if out[0]==1:
+      return("The patient is dead")
+  else:
+      return("The patient is not dead")
+
+## Prometheus 
+
+#def predict_event(age, anaemia, high_blood_pressure, creatinine_phosphokinase, diabetes, ejection_fraction, platelets, sex, serum_creatinine, serum_sodium, smoking, time):
+
+#   sample = {
+#         "age": int(age),
+#         "anaemia": int(anaemia),
+#         "high_blood_pressure": int(high_blood_pressure),
+#         "creatinine_phosphokinase": int(creatinine_phosphokinase),
+#         "diabetes": int(diabetes),
+#         "ejection_fraction": int(ejection_fraction),
+#         "platelets": float(platelets),
+#         "sex": int(sex),
+#         "serum_creatinine": float(serum_creatinine),
+#         "serum_sodium": int(serum_sodium),
+#         "smoking": int(smoking),
+#         "time": int(time)
+#     }
+
+#   print(sample)
+#   sample_df=pd.DataFrame(sample,index=[0])
+#   #sample_df[numerical_cols]=scaler.transform(sample_df[numerical_cols])
 
 
-# Inputs from user
-inputs = [
-    gr.Slider(minimum=40, maximum=95, step=1, value=60, label="Age"),
-    gr.Radio(choices=[0, 1], value=0, label="Anaemia"),
-    gr.Radio(choices=[0, 1], value=0, label="High Blood Pressure"),
-    gr.Slider(minimum=23, maximum=7861, step=1, value=582, label="Creatinine Phosphokinase"),
-    gr.Radio(choices=[0, 1], value=0, label="Diabetes"),
-    gr.Slider(minimum=14, maximum=80, step=1, value=38, label="Ejection Fraction"),
-    gr.Slider(minimum=25100, maximum=850000, step=1, value=265000, label="Platelets"),
-    gr.Radio(choices=[0, 1], value=0, label="Sex"),
-    gr.Slider(minimum=0.5, maximum=9.4, step=0.1, value=1.1, label="Serum Creatinine"),
-    gr.Slider(minimum=113, maximum=148, step=1, value=136, label="Serum Sodium"),
-    gr.Radio(choices=[0, 1], value=0, label="Smoking"),
-    gr.Slider(minimum=4, maximum=285, step=1, value=115, label="Time"),
-]
+#   out = xgb_clf.predict(sample_df)
+#   print(out)
+#   return out
 
-# Output response
-outputs = gr.Textbox(label="Prediction")
+test_data = pd.read_csv("heart_failure_clinical_records_dataset.csv")
+accuracy_metric = prom.Gauge('DEATH_EVENT_r2_score', 'R2 score for random 100 test samples')
 
-# Gradio interface to generate UI link
-title = "Patient Survival Prediction"
-description = "Predict survival of patient with heart failure, given their clinical record"
+xgb_clf = joblib.load('xgboost-model.pkl')
 
-iface = gr.Interface(
+# Function for updating metrics
+def update_metrics():
+    test = test_data.sample(100)
+    test_feat = test.drop('DEATH_EVENT', axis=1)
+    test_cnt = test['DEATH_EVENT'].values
+    test_pred = xgb_clf.predict(test_feat.iloc[:, :])#[0] #['predictions'] 
+    accuracy = accuracy_score(test_cnt, test_pred)#.round(3)
+    accuracy_metric.set(accuracy)
+
+
+# FastAPI object
+app = FastAPI()
+@app.get("/metrics")
+async def get_metrics():
+    update_metrics()
+    return Response(media_type="text/plain",content = prom.generate_latest())
+
+
+demo = gradio.Interface(
     fn=predict_death_event,
-    inputs=inputs,  # Using the inputs defined earlier
-    outputs=outputs,
-    title=title,
-    description=description,
-    allow_flagging='never'
+    inputs=["text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text"],
+    outputs=["text"],  
 )
+#
+# Output response
 
-iface.launch(share=True)
+# Mount gradio interface object on FastAPI app at endpoint = '/'
+app = gradio.mount_gradio_app(app, demo, path="/")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001) 
+
+# demo.launch(share=True, server_name="0.0.0.0", server_port=8001)
