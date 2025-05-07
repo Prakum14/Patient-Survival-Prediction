@@ -12,7 +12,7 @@ scrape_configs:
   scrape_interval: 10s # override default value
   scrape_timeout: 10s # override default value
   static_configs:
-    - targets: ["verbose-cod-pwx4w5p9wxpc6jr9-9090.app.github.dev"] # The target here it's Prometheus itself.
+    - targets: ["bookish-capybara-r4p49vg6w5vrh5q9x-9090.app.github.dev"] # The target here it's Prometheus itself.
 
 - job_name: "health_predict_app"
   metrics_path: '/metrics'
@@ -20,4 +20,4 @@ scrape_configs:
   scrape_interval: 10s
   scrape_timeout: 10s
   static_configs:
-  - targets: ["verbose-cod-pwx4w5p9wxpc6jr9-8001.app.github.dev"]
+  - targets: ["bookish-capybara-r4p49vg6w5vrh5q9x-9090.app.github.dev"]
